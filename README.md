@@ -1,8 +1,8 @@
 
-Join the Key9 Discord channel
------------------------------
+Join the Key9 Slack channel
+---------------------------
 
-[![Discord](./images/slack.png)](https://key9identity.slack.com/)
+[![Slack](./images/slack.png)](https://key9identity.slack.com/)
 
 
 What is they Key9 Tail?
