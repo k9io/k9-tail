@@ -1,0 +1,18 @@
+[Unit]
+Description=Key9 Tail
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=root
+ExecStart=/opt/k9/bin/k9-tail
+Restart=always
+RestartSec=10
+TimeoutStopSec=90
+KillMode=process
+
+OOMScoreAdjust=-900
+SyslogIdentifier=K9-TAIL
+
+[Install]
+WantedBy=multi-user.target
