@@ -173,9 +173,9 @@ func main() {
 
 	for line := range t.Lines {
 
-		/* Only process data related to sshd, please */
+		/* Only process data related to sshd, please. Try and exclude audit logs. */
 
-		if strings.Contains(line.Text, "sshd") == true {
+		if strings.Contains(line.Text, "sshd") == true && strings.Contains(line.Text, " audit[") == false && strings.Contains(line.Text, " audit:") == false {
 
 			if *debug {
 				log.Printf("| %v|%d| %s\n", line.SeekInfo, line.Num, line.Text)
