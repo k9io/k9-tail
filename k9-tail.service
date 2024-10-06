@@ -1,3 +1,10 @@
+# “k9-tail” is part of the Key9 (https://k9.io) service. This service 
+# “follows” authentication log files and sends them the Key9. This 
+# information is used to identify which SSH public keys are being 
+# utilized and tracks successful and unsuccessful login attempts. While
+# this service is not mandatory for Key9 SSH to operate, it does 
+# provide valuable information.
+
 [Unit]
 Description=Key9 Tail
 After=network-online.target
@@ -12,7 +19,7 @@ TimeoutStopSec=90
 KillMode=process
 
 OOMScoreAdjust=-900
-SyslogIdentifier=K9-TAIL
+SyslogIdentifier=k9-tail
 
 [Install]
 WantedBy=multi-user.target
