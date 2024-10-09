@@ -5,6 +5,8 @@
 # distribution. 
 ##############################################################################
 
+K9_UTIL="k9-tail"
+
 EXCLUDE="plan9|ios|android|js"  # Don't build these binaries.
 
 # Get list from Go and exclude certain builds
@@ -15,9 +17,19 @@ do
 	OS=`echo $IN | cut -f1 -d'/'`
 	ARCH=`echo $IN | cut -f2 -d'/'`
 
-	echo "Building for $OS [$ARCH]"
+	echo -n "Building for $OS [$ARCH]: "
 
 	mkdir -p bin/$OS 2> /dev/null 
 
-	env GOOS=$OS GOARCH=$ARCH go build -o bin/$OS/k9-tail.$ARCH
+	echo -n "*"	
+	env GOOS=$OS GOARCH=$ARCH go build -o bin/$OS/$K9_UTIL.$ARCH
+
+	echo -n "*"
+	gzip -9 bin/$OS/$K9_UTIL.$ARCH
+
+	echo -n "*"
+	sha256sum bin/$OS/$K9_UTIL.$ARCH.gz | cut -d' ' -f1 > bin/$OS/$K9_UTIL.$ARCH.gz-sha256.txt
+
+	echo 
+
 done
