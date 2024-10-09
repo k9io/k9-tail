@@ -1,0 +1,23 @@
+#!/bin/bash
+
+##############################################################################
+# Simple script the builds Key9 utilities into static binaries for 
+# distribution. 
+##############################################################################
+
+EXCLUDE="plan9|ios|android|js"  # Don't build these binaries.
+
+# Get list from Go and exclude certain builds
+
+go tool dist list | grep -vE $EXCLUDE | while read IN
+do 
+
+	OS=`echo $IN | cut -f1 -d'/'`
+	ARCH=`echo $IN | cut -f2 -d'/'`
+
+	echo "Building for $OS [$ARCH]"
+
+	mkdir -p bin/$OS 2> /dev/null 
+
+	env GOOS=$OS GOARCH=$ARCH go build -o bin/$OS/k9-tail.$ARCH
+done
