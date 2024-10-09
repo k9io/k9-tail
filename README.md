@@ -28,4 +28,15 @@ $ sudo systemctl enable k9-tail
 $ sudo systemctl start k9-tail
 </pre>
 
+You'll need to have the Key9 master configuration file.   That is located at: 
+
+https://github.com/k9io/k9-ssh/blob/main/etc/k9.yaml
+
+Prebuild Key9 proxy binaries
+----------------------------
+
+If you are unable to access a Golang compiler, you can download pre-built/pre-compiled binaries. These binaries are available for various architectures (i386, amd64, arm64, etc) and multiple operating systems (Linux, Solaris, NetBSD, etc).
+
+You can find those binaries at: https://github.com/k9io/k9-binaries/tree/main/k9-tail
+
 
