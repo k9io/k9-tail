@@ -22,7 +22,7 @@ do
 	mkdir -p bin/$OS 2> /dev/null 
 
 	echo -n "*"	
-	env GOOS=$OS GOARCH=$ARCH go build -o bin/$OS/$K9_UTIL.$ARCH
+	env CGO_ENABLED=0 GOOS=$OS GOARCH=$ARCH go build -o bin/$OS/$K9_UTIL.$ARCH -ldflags "-s"
 
 	echo -n "*"
 	gzip -9 bin/$OS/$K9_UTIL.$ARCH
