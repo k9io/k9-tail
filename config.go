@@ -22,6 +22,7 @@ package main
 
 import (
 	"log"
+	"net/url"
 	"os"
 
 	"gopkg.in/yaml.v2"
@@ -32,6 +33,15 @@ var Config *Configuration
 func LoadConfig(config_file string) *Configuration {
 
 	/* Load config file */
+
+	fi, err := os.Stat(config_file)
+	if err != nil {
+		log.Fatalf("Cannot stat '%s': %s", config_file, err)
+	}
+
+	if fi.Mode().Perm()&0077 != 0 {
+		log.Fatalf("Config file '%s' permissions are too open (%o). Set to 0600.", config_file, fi.Mode().Perm())
+	}
 
 	file, err := os.Open(config_file)
 
@@ -70,7 +80,12 @@ func LoadConfig(config_file string) *Configuration {
 	}
 
 	if Config.Tail.Client_Logging_URL == "" {
-		log.Fatalf("'waldo_file' key not found in %s\n", config_file)
+		log.Fatalf("'client_logging_url' key not found in %s\n", config_file)
+	}
+
+	parsedURL, err := url.Parse(Config.Tail.Client_Logging_URL)
+	if err != nil || parsedURL.Scheme != "https" {
+		log.Fatalf("'client_logging_url' must use HTTPS (got %q) in %s\n", Config.Tail.Client_Logging_URL, config_file)
 	}
 
 	return Config

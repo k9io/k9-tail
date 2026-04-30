@@ -35,10 +35,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"os/signal"
@@ -51,6 +53,8 @@ import (
 	"github.com/nxadm/tail"
 )
 
+var httpClient = &http.Client{Timeout: 30 * time.Second}
+
 func main() {
 
 	var waldo_position int64 /* Storage for seek position */
@@ -62,8 +66,11 @@ func main() {
 
 	/* Signal processing. */
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	signalChannel := make(chan os.Signal, 2)
-	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(signalChannel, os.Interrupt, syscall.SIGTERM, syscall.SIGABRT)
 
 	go func() {
 
@@ -72,27 +79,22 @@ func main() {
 		switch sig {
 
 		case syscall.SIGINT:
-
-			if *debug == true {
+			if *debug {
 				log.Printf("Caught SIGINT\n")
 			}
 
-			Catch_Signal()
-
 		case syscall.SIGTERM:
-
-			if *debug == true {
+			if *debug {
 				log.Printf("Caught SIGTERM\n")
 			}
-			Catch_Signal()
 
 		case syscall.SIGABRT:
-
-			if *debug == true {
+			if *debug {
 				log.Printf("Caught SIGABRT\n")
 			}
-			Catch_Signal()
 		}
+
+		cancel()
 
 	}()
 
@@ -118,7 +120,7 @@ func main() {
 
 	if err != nil {
 
-		err := os.WriteFile(Config.Tail.Waldo_File, []byte("{0 0}"), 0644)
+		err := os.WriteFile(Config.Tail.Waldo_File, []byte("{0 0}"), 0600)
 
 		if err != nil {
 
@@ -130,14 +132,32 @@ func main() {
 
 	} else {
 
-		if string(waldo_data) != "" {
+		if len(waldo_data) == 0 {
 
-			/* Waldo is stored like this: "{2227597 0}".  We only wan the
+			waldo_position = 0
+
+		} else {
+
+			/* Waldo is stored like this: "{2227597 0}".  We only want the
 			"2227597" seek position.  We carve this out of the string for
 			later use */
 
+			if len(waldo_data) < 3 {
+				log.Fatalf("Waldo file is corrupt (too short): %q\n", waldo_data)
+			}
+
 			splitme := strings.Split(string(waldo_data)[1:], " ")
-			waldo_position, _ = strconv.ParseInt(splitme[0], 10, 64)
+
+			if len(splitme) == 0 {
+				log.Fatalf("Waldo file is corrupt (unparseable): %q\n", waldo_data)
+			}
+
+			var parseErr error
+			waldo_position, parseErr = strconv.ParseInt(splitme[0], 10, 64)
+
+			if parseErr != nil {
+				log.Fatalf("Waldo file has invalid position %q: %s\n", splitme[0], parseErr)
+			}
 
 			if *debug {
 				log.Printf("| Tail File: %s\n", Config.Tail.Tail_File)
@@ -145,10 +165,6 @@ func main() {
 				log.Printf("| Waldo Split: %s\n", splitme[0])
 				log.Printf("| Pre-Position: %v\n", waldo_position)
 			}
-
-		} else {
-
-			log.Fatalf("Waldo is corrupt/incomplete!\n")
 
 		}
 	}
@@ -171,47 +187,75 @@ func main() {
 
 	/* Loop for reading data as it comes in */
 
-	for line := range t.Lines {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
 
-		/* Only process data related to sshd, please. Try and exclude audit logs. */
+	var pendingWaldo string /* Latest seek position, flushed to disk periodically */
 
-		if strings.Contains(line.Text, "sshd") == true && strings.Contains(line.Text, " audit[") == false && strings.Contains(line.Text, " audit:") == false {
+	for {
+		select {
 
-			if *debug {
-				log.Printf("| %v|%d| %s\n", line.SeekInfo, line.Num, line.Text)
+		case line, ok := <-t.Lines:
+
+			if !ok {
+				return
 			}
 
-			JSON.Log = line.Text
-			JSON.Hostname = hostname
+			/* Track position for every line so restart never re-processes seen lines */
 
-			JSON_OUT, err := json.Marshal(JSON)
+			pendingWaldo = fmt.Sprintf("%v", line.SeekInfo)
 
-			if err != nil {
-				log.Fatalf("Can't decode JSON - '%s'\n", JSON.Log)
+			/* Only process data related to sshd, please. Try and exclude audit logs. */
+
+			if strings.Contains(line.Text, "sshd") == true && strings.Contains(line.Text, " audit[") == false && strings.Contains(line.Text, " audit:") == false {
+
+				if *debug {
+					log.Printf("| %v|%d| %s\n", line.SeekInfo, line.Num, line.Text)
+				}
+
+				JSON.Log = line.Text
+				JSON.Hostname = hostname
+
+				JSON_OUT, err := json.Marshal(JSON)
+
+				if err != nil {
+					log.Fatalf("Can't decode JSON - '%s'\n", JSON.Log)
+				}
+
+				/* POST data and look for errors */
+
+				Status := Post_Log(ctx, API_KEY, JSON_OUT)
+
+				backoff := 2 * time.Second
+				for retries := 0; Status != "200 OK" && retries < 10; retries++ {
+					log.Printf("Got '%s' instead of '200 OK'. Retry %d/10.....", Status, retries+1)
+					time.Sleep(backoff)
+					backoff = time.Duration(math.Min(float64(backoff)*2, float64(60*time.Second)))
+					Status = Post_Log(ctx, API_KEY, JSON_OUT)
+				}
+
+				if Status != "200 OK" {
+					log.Printf("Failed to post log after 10 retries, discarding: %s\n", JSON.Log)
+				}
 			}
 
-			waldo_data := fmt.Sprintf("%v", line.SeekInfo) /* Write position */
+		case <-ticker.C:
 
-			/* POST data and look for errors */
-
-			Status := Post_Log(API_KEY, JSON_OUT)
-
-			for Status != "200 OK" {
-
-				log.Printf("Got '%s' instead of '200 OK'. Retrying.....", Status)
-				Status = Post_Log(API_KEY, JSON_OUT)
-
-				time.Sleep(2 * time.Second) /* So we don't overwhelm network/CPU */
-
+			if pendingWaldo != "" {
+				err := os.WriteFile(Config.Tail.Waldo_File, []byte(pendingWaldo), 0600)
+				if err != nil {
+					log.Fatalf("Can't update waldo %s (%s).\n", Config.Tail.Waldo_File, err)
+				}
+				pendingWaldo = ""
 			}
 
-			err = os.WriteFile(Config.Tail.Waldo_File, []byte(waldo_data), 0644) /* Store new position */
+		case <-ctx.Done():
 
-			if err != nil {
-
-				log.Fatalf("Can't update waldo %s (%s).\n", Config.Tail.Waldo_File, err)
-
+			if pendingWaldo != "" {
+				log.Printf("Shutting down, flushing waldo position.\n")
+				os.WriteFile(Config.Tail.Waldo_File, []byte(pendingWaldo), 0600)
 			}
+			return
 		}
 	}
 }
@@ -220,9 +264,9 @@ func main() {
 /* Post_Log - Send data via HTTP POST request (over TLS) to Key9 */
 /*****************************************************************/
 
-func Post_Log(API_KEY string, JSON_OUT []byte) string {
+func Post_Log(ctx context.Context, API_KEY string, JSON_OUT []byte) string {
 
-	req, err := http.NewRequest("POST", Config.Tail.Client_Logging_URL, bytes.NewBuffer(JSON_OUT))
+	req, err := http.NewRequestWithContext(ctx, "POST", Config.Tail.Client_Logging_URL, bytes.NewBuffer(JSON_OUT))
 
 	if err != nil {
 		log.Fatalf("Can't build http.NewRequest (%s)\n", err)
@@ -230,9 +274,7 @@ func Post_Log(API_KEY string, JSON_OUT []byte) string {
 
 	req.Header.Set("API_KEY", API_KEY)
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{}
-
-	resp, err := client.Do(req)
+	resp, err := httpClient.Do(req)
 
 	if err != nil {
 		log.Printf("| Failed to make HTTP request (%s). Waiting to retry....\n", err)
@@ -241,18 +283,9 @@ func Post_Log(API_KEY string, JSON_OUT []byte) string {
 	}
 
 	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
 
 	return resp.Status
 
 }
 
-/****************************************************************/
-/* Catch_Signal - Simple "signal" catcher.  May want this to do */
-/* more in the future						*/
-/****************************************************************/
-
-func Catch_Signal() {
-
-	os.Exit(0)
-
-}
