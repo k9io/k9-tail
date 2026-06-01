@@ -1,6 +1,6 @@
 module k9-tail
 
-go 1.25.2
+go 1.25.10
 
 require (
 	github.com/clarketm/json v1.17.1
