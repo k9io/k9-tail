@@ -34,15 +34,6 @@ func LoadConfig(config_file string) *Configuration {
 
 	/* Load config file */
 
-	fi, err := os.Stat(config_file)
-	if err != nil {
-		log.Fatalf("Cannot stat '%s': %s", config_file, err)
-	}
-
-	if fi.Mode().Perm()&0077 != 0 {
-		log.Fatalf("Config file '%s' permissions are too open (%o). Set to 0600.", config_file, fi.Mode().Perm())
-	}
-
 	file, err := os.Open(config_file)
 
 	if err != nil {
