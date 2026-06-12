@@ -5,38 +5,31 @@ Join the Key9 Slack channel
 [![Slack](./images/slack.png)](https://key9identity.slack.com/)
 
 
-What is they Key9 Tail?
-------------------------
+# k9-tail
 
-K9-tail is a small program that ”follows” authentication files for the Key9 Identity service.   The only authentication data that is sent to Key9 are SSH logs.   These logs are used to determine when, where, and how a user accessed a system.   For example,  SSH logs tell Key9 want “public key” was used during authentication.  They might also establish a Geo Location, by IP address, of the user logging in.  
+**k9-tail** is a lightweight daemon that monitors authentication log files and streams SSH events to the [Key9 Identity](https://k9.io) service in real time.
 
-k-tail keeps track of where it left off in authentication logs by a “waldo”.  The “waldo” file records the last position of the file.   This prevents k9-tail from “resending” logs it has already sent to Key9.  In the event an authentication log file is truncated,  the “waldo” file is reset to zero. 
+## What it does
 
-Building and installing the Key9 Tail
--------------------------------------
+k9-tail follows a system authentication log (typically `/var/log/auth.log`) and forwards SSH-related entries to Key9. This enables Key9 to:
 
-Make sure you have Golang installed! 
+* Identify which SSH public keys are being used for authentication
+* Record successful and failed login attempts
+* Establish geolocation data from client IP addresses
+* Provide a full audit trail of SSH access across your fleet
 
-<pre>
-$ go mod init k9-tail
-$ go mod tidy
-$ go build
-$ sudo mkdir -p /opt/k9/bin
-$ sudo cp k9-tail /opt/k9/bin
-$ sudo cp k9-tail.service /etc/systemd/system
-$ sudo systemctl enable k9-tail
-$ sudo systemctl start k9-tail
-</pre>
+Only `sshd` log entries are transmitted. Kernel audit log lines (containing `audit[` or `audit:`) are explicitly excluded.
 
-You'll need to have the Key9 master configuration file.   That is located at: 
+## How it tracks progress
 
-https://github.com/k9io/k9-ssh/blob/main/etc/k9.yaml
+k9-tail uses a **waldo file** to record its current position in the authentication log. On restart, it resumes from where it left off, ensuring no events are duplicated or missed. If the log file is truncated (e.g., after log rotation), the waldo position is automatically reset to the beginning.
 
-Prebuild Key9 tail binaries
----------------------------
+## Is k9-tail required?
 
-If you are unable to access a Golang compiler, you can download pre-built/pre-compiled binaries. These binaries are available for various architectures (i386, amd64, arm64, etc) and multiple operating systems (Linux, Solaris, NetBSD, etc).
+k9-tail is optional but strongly recommended. Key9 SSH will function without it, but you will lose visibility into key usage, login history, and geolocation data.
 
-You can find those binaries at: https://github.com/k9io/k9-binaries/tree/main/k9-tail
+## Quick links
 
+* [Key9 documentation](https://docs.k9.io)
+* [k9-tail documentation](https://docs.k9.io/key9-identity/k9-tail)
 
